@@ -77,7 +77,7 @@ proc serve*(s: WebuiServer): Future[void] =
         };
       """ % [$s.port, s.accessToken]
 
-      scripts.add compileJs("karax_app.nim", "-d:createChroniclesTail")
+      # scripts.add compileJs("karax_app.nim", "-d:createChroniclesTail")
 
       # for plugin in s.plugins:
       #  scripts.add plugin

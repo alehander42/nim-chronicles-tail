@@ -1,8 +1,8 @@
 import
   tables, macros, parseopt, strutils, sequtils, unicode, algorithm, json,
   re, terminal, os, osproc, streams, threadpool, parsesql, asyncdispatch,
-  browsers, prompt, chronicles, chronicles/topics_registry,
-  pipes, webui/server
+  browsers, prompt, chronicles/topics_registry,
+  pipes, webui/server, kind_chronicles
 
 type
   SyntaxError = object of Exception
@@ -31,6 +31,7 @@ type
 proc printTextBlock(level: LogLevel, msg, topic: string, j: JsonNode)
 proc printTextLine(level: LogLevel, msg, topic: string, j: JsonNode)
 proc printJson(level: LogLevel, msg, topic: string, j: JsonNode)
+proc printKind(level: LogLevel, msg, topic: string, j: JsonNode)
 
 const
   nkStrLiterals = {nkStringLit, nkQuotedIdent}
@@ -83,6 +84,8 @@ for kind, key, val in optParser.getopt():
           activeRecordPrinter = printTextBlock
         of "textlines":
           activeRecordPrinter = printTextLine
+        of "kind":
+          activeRecordPrinter = printKind
     of "enabled_topics":
       var topics = val.split(Whitespace)
       for t in topics:
@@ -248,6 +251,9 @@ proc printTextLine(level: LogLevel, msg, topic: string, j: JsonNode) =
 proc printJson(level: LogLevel, msg, topic: string, j: JsonNode) =
   printRecord(JsonRecord[StdOutOutput, RfcTime], level, msg, topic, j)
 
+proc printKind(level: LogLevel, msg, topic: string, j: JsonNode) =
+  printRecord(KindRecord[StdOutOutput, AnsiColors], level, msg, topic, j)
+
 proc compare(r: JsonNode, n: SqlNode): int =
   case r.kind
   of JString:
@@ -403,6 +409,8 @@ proc handleCommand(line: string) =
       activeRecordPrinter = printTextLine
     elif cmdParam == "json":
       activeRecordPrinter = printJson
+    elif cmdParam == "kind":
+      activeRecordPrinter = printKind
     else:
       print "Please, enter a valid format: TextBlockRecord, TextLineRecord or JsonRecord"
   of cmdGrep:
@@ -457,7 +465,7 @@ system.addQuitProc(quitProc)
 proc processTailingThread(process: Process) =
   for line in outputStream(process).lines:
     var line = line & " L"
-    print("GOT OUTPUT " & line)
+    # print("GOT OUTPUT " & line)
     postToMainLoop line
 
 spawn processTailingThread(process)
@@ -549,7 +557,7 @@ proc mainLoop {.async.} =
           server.broadcastLine(logLine)
 
         var
-          level = parseLogLevel j.extractAttr("level", "")
+          level = parseLogLevel j.extractAttr("lvl", "")
           topics = j.extractAttr("topics", "")
           topicStates = map(topics.split(Whitespace + {',', ';'}), createTopicState)
 
