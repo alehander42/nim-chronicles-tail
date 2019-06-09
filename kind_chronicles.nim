@@ -1,4 +1,4 @@
-import chronicles, terminal, tables
+import chronicles, terminal, tables, strutils
 
 var TOPIC_COLORS = {"gdb": fgGreen}.toTable()
 
@@ -19,15 +19,29 @@ template resetColors(record) =
   elif record.colors == NativeColors:
     resetAttributes(getOutputStream(record.output))
 
+template shortName(lvl: LogLevel): string =
+  # Same-length strings make for nice alignment
+  case lvl
+  of TRACE: "TRC"
+  of DEBUG: "DBG"
+  of INFO:  "INF"
+  of NOTICE:"NOT"
+  of WARN:  "WRN"
+  of ERROR: "ERR"
+  of FATAL: "FAT"
+  of NONE:  "   "
+
+# end
+
 template initLogRecord*(r: var KindRecord, lvl: LogLevel, topics: string, raw: string) =
   if TOPIC_COLORS.hasKey(topics):
     r.color = TOPIC_COLORS[topics]
   else:
     r.color = fgBlue
   fgColor(r, r.color, false)
-  r.output.append $lvl , " ", topics
+  r.output.append shortName(lvl) , " ", topics.align(20, ' ')
   resetColors(r)
-  r.output.append " ", raw
+  r.output.append " ", raw.align(80, ' ')
 
 
 template setProperty*(r: var KindRecord, key: string, val: auto) =
