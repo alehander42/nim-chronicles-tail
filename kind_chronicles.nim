@@ -1,6 +1,6 @@
 import chronicles, terminal, tables, strutils
 
-var TOPIC_COLORS = {"gdb": fgGreen}.toTable()
+var TOPIC_COLORS = {"prestart": fgWhite, "index": fgYellow, "gdb": fgRed, "debugger": fgGreen, "plugin": fgBlue, "preload": fgMagenta, "move": fgCyan, "python": fgWhite}.toTable()
 
 type KindRecord*[Output; colors: static[ColorScheme]] = object
   output*: Output
@@ -40,9 +40,9 @@ template initLogRecord*(r: var KindRecord, lvl: LogLevel, topics: string, raw: s
     r.color = fgBlue
   fgColor(r, r.color, false)
   r.output.append shortName(lvl) , " ", topics.align(20, ' ')
-  resetColors(r)
   r.output.append " ", raw.align(80, ' ')
-
+  resetColors(r)
+  
 
 template setProperty*(r: var KindRecord, key: string, val: auto) =
   if key != "tid":
