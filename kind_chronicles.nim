@@ -5,6 +5,7 @@ var TOPIC_COLORS = {"prestart": fgWhite, "index": fgYellow, "gdb": fgRed, "debug
 type KindRecord*[Output; colors: static[ColorScheme]] = object
   output*: Output
   color*: ForegroundColor
+  path*: string
 
 # TODO: export in log_output
 template fgColor(record, color, brightness) =
@@ -45,14 +46,17 @@ template initLogRecord*(r: var KindRecord, lvl: LogLevel, topics: string, raw: s
   
 
 template setProperty*(r: var KindRecord, key: string, val: auto) =
-  if key != "tid":
+  if key != "tid" and key != "file":
     r.output.append " ", key, " ", $val
+  elif key == "file":
+    r.path = ($val).rsplit("/", 1)[1]
 
 template setFirstProperty*(r: var KindRecord, key: string, val: auto) =
   fgColor(r, r.color, false)
   r.setProperty key, val
 
 template flushRecord*(r: var KindRecord) =
+  r.output.append " " & r.path.align(20, ' ')
   resetColors(r)
   r.output.append "\n"
   r.output.flushOutput
