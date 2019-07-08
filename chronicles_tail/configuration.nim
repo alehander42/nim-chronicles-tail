@@ -8,7 +8,7 @@ macro compileJsImpl(callerInfo: static InstantiationInfo,
                     sourceFile: static string,
                     nimOptions: static string = ""): untyped =
   var
-    fullSourceFile = callerInfo.filename.splitFile.dir / "e"
+    fullSourceFile = callerInfo.filename.splitFile.dir / sourceFile
     targetFile = fullSourceFile & ".js"
     nimCmd = &"nim {nimOptions} js -o:{targetFile} {fullSourceFile}"
 

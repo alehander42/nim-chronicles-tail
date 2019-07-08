@@ -1,8 +1,13 @@
 import
   tables, macros, parseopt, strutils, sequtils, unicode, algorithm, json,
   re, terminal, os, osproc, streams, threadpool, parsesql, asyncdispatch,
-  browsers, prompt, chronicles/topics_registry,
+  browsers, chronicles/topics_registry,
   pipes, webui/server, kind_chronicles
+
+const hasPrompt = not defined(noPrompt)
+
+when hasPrompt:
+  import prompt
 
 type
   SyntaxError = object of Exception
@@ -176,19 +181,22 @@ proc provideCompletions*(pline: seq[Rune], cursorPos: int): seq[string] =
     result.add commands[index + i][0]
     i += 1
 
-var p = Prompt.init("chronicles > ", provideCompletions)
-p.useHistoryFile()
+when hasPrompt:
+  var p = Prompt.init("chronicles > ", provideCompletions)
+  p.useHistoryFile()
 
-proc pSaveHistory(){.noconv.} =
-  try:
-    p.saveHistory()
-  except IOError:
-    p.writeLine("Error saving history to " & p.historyPath)
+  proc pSaveHistory(){.noconv.} =
+    try:
+      p.saveHistory()
+    except IOError:
+      p.writeLine("Error saving history to " & p.historyPath)
 
-addQuitProc pSaveHistory
+  addQuitProc pSaveHistory
 
-var pAddr = addr(p)
-proc print(s: string) = pAddr[].writeline s
+  var pAddr = addr(p)
+  proc print(s: string) = pAddr[].writeline s
+else:
+  proc print(s: string) = styledEcho(s)
 
 proc ctrlCHandler() {.noconv.} = quit 0
 setControlCHook ctrlCHandler
@@ -217,30 +225,36 @@ func parseLogLevel(level: string): LogLevel =
 
 proc printRecord(Record: type, level: LogLevel, msg, topic: string, j: JsonNode) =
   var record: Record
-  pAddr[].withOutput do ():
-    initLogRecord(record, level, topic, msg)
-    var b = true
-    for field, value in j:
-      if b:
-        record.setFirstProperty($field, value)
-        b = false
-      else:
-        case value.kind
-        of JString:
-          record.setProperty($field, value.str)
-        of JInt:
-          record.setProperty($field, value.num)
-        of JFloat:
-          record.setProperty($field, value.fnum)
-        of JBool:
-          record.setProperty($field, value.bval)
-        of JNull:
-          assert false
-        of JObject:
-          record.setProperty($field, $value)
-        of JArray:
-          record.setProperty($field, value.elems)
-    flushRecord(record)
+  when hasPrompt:
+    p.hidePrompt()
+  
+  initLogRecord(record, level, topic, msg)
+  var b = true
+  for field, value in j:
+    if b:
+      record.setFirstProperty($field, value)
+      b = false
+    else:
+      case value.kind
+      of JString:
+        record.setProperty($field, value.str)
+      of JInt:
+        record.setProperty($field, value.num)
+      of JFloat:
+        record.setProperty($field, value.fnum)
+      of JBool:
+        record.setProperty($field, value.bval)
+      of JNull:
+        record.setProperty($field, "null")
+        # assert false
+      of JObject:
+        record.setProperty($field, $value)
+      of JArray:
+        record.setProperty($field, value.elems)
+  flushRecord(record)
+
+  when hasPrompt:
+    p.showPrompt()
 
 proc printTextBlock(level: LogLevel, msg, topic: string, j: JsonNode) =
   printRecord(TextBlockRecord[StdOutOutput, RfcTime, NativeColors], level, msg, topic, j)
@@ -473,31 +487,46 @@ spawn processTailingThread(process)
 proc checkType(j: JsonNode, key: string, kind: JsonNodeKind): bool =
   j.hasKey(key) and j[key].kind == kind
 
-proc setStatus() =
-  var statusBar: seq[StatusBarItem] = @[]
-  if activeTopics != "" :
-    statusBar.add(("topics", activeTopics))
-  if activeFilter != "" :
-    statusBar.add(("filter", activeFilter))
-  if activeGrep != "" :
-    statusBar.add(("grep", activeGrep))
-  p.setStatusBar(statusBar)
 
-setStatus()
+when hasPrompt:
+  proc setStatus() =
+    var statusBar: seq[StatusBarItem] = @[]
+    if activeTopics != "" :
+      statusBar.add(("topics", activeTopics))
+    if activeFilter != "" :
+      statusBar.add(("filter", activeFilter))
+    if activeGrep != "" :
+      statusBar.add(("grep", activeGrep))
+    p.setStatusBar(statusBar)
 
-proc inputThread =
-  try:
-    while true:
-      var line = pAddr[].readLine()
-      line.add " C"
-      postToMainLoop line
-  except:
-    let ex = getCurrentException()
-    # print ex.getStackTrace
-    # print ex.msg
-    quit 1
+  setStatus()
 
-spawn inputThread()
+  proc inputThread =
+    try:
+      while true:
+        var line = pAddr[].readLine()
+        line.add " C"
+        postToMainLoop line
+    except:
+      let ex = getCurrentException()
+      # print ex.getStackTrace
+      # print ex.msg
+      quit 1
+
+  spawn inputThread()
+else:
+  proc redirect {.gcsafe.} =
+    try:
+      while true:
+        var line = stdin.readLine()
+        echo line
+        {.gcsafe.}:
+          process.inputStream.write(line)
+          process.inputStream.write("list\n")
+    except:
+      quit 1
+
+  # spawn redirect()
 
 proc extractAttr[T](j: JsonNode, key: string, default: T): T =
   if j.hasKey(key):
@@ -528,7 +557,8 @@ proc mainLoop {.async.} =
     case msgType
     of 'C':
       handleCommand(logLine)
-      setStatus()
+      when not defined(noPrompt):
+        setStatus()
     of 'L':
       if matchRE(logLine, regex):
         var j: JsonNode
